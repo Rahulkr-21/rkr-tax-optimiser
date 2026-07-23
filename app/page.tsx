@@ -10,7 +10,7 @@ export default function Home() {
   const [isLoaded, setIsLoaded] = useState(false);
   
   const [state, setState] = useState<AppState>({
-    primary: { grossSalary: 42000, bonus: 0, bonusDate: '2026-12-20', employerPensionContribution: 0, personalPensionContribution: 3300, pensionType: 'salary_sacrifice', studentLoanPlan: 'none', startDate: '2026-04-06', monthlyExpenses: 1500 }
+    primary: { grossSalary: 42000, bonus: 0, bonusDate: '2026-12-20', employerPensionContribution: 0, personalPensionContribution: 3300, pensionType: 'salary_sacrifice', studentLoanPlan: 'none', startDate: '2026-04-06', monthlyExpenses: 1500, isScottishResident: false }
   });
 
   useEffect(() => {
@@ -60,6 +60,20 @@ export default function Home() {
               <div>
                 <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500 mb-1">Job Start Date</label>
                 <input type="date" min="2026-04-06" max="2027-04-05" value={state.primary.startDate} onChange={(e) => setState(p => ({ primary: { ...p.primary, startDate: e.target.value } }))} className="w-full border border-slate-200 rounded-xl px-4 py-2.5 focus:ring-2 focus:ring-blue-500 outline-hidden transition text-slate-700" />
+              </div>
+
+              {/* NEW: Scottish Residency Toggle */}
+              <div className="md:col-span-2 flex items-center gap-3 bg-slate-50 p-3 rounded-xl border border-slate-200">
+                <input
+                  type="checkbox"
+                  id="scottish-resident"
+                  checked={state.primary.isScottishResident || false}
+                  onChange={(e) => setState(p => ({ primary: { ...p.primary, isScottishResident: e.target.checked } }))}
+                  className="w-5 h-5 text-blue-600 bg-white border-slate-300 rounded focus:ring-blue-500 cursor-pointer"
+                />
+                <label htmlFor="scottish-resident" className="text-sm font-semibold text-slate-700 cursor-pointer">
+                  I am a resident of Scotland (Applies Scottish Income Tax rates)
+                </label>
               </div>
 
               <div className="border-t border-slate-100 pt-6 md:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-6">

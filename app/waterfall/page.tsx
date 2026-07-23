@@ -8,7 +8,7 @@ import Link from 'next/link';
 export default function WaterfallPage() {
   const [isLoaded, setIsLoaded] = useState(false);
   const [state, setState] = useState<AppState>({
-    primary: { grossSalary: 42000, bonus: 0, bonusDate: '2026-12-20', employerPensionContribution: 0, personalPensionContribution: 3300, pensionType: 'salary_sacrifice', studentLoanPlan: 'none', startDate: '2026-04-06', monthlyExpenses: 1500 }
+    primary: { grossSalary: 42000, bonus: 0, bonusDate: '2026-12-20', employerPensionContribution: 0, personalPensionContribution: 3300, pensionType: 'salary_sacrifice', studentLoanPlan: 'none', startDate: '2026-04-06', monthlyExpenses: 1500, isScottishResident: false }
   });
 
   useEffect(() => {

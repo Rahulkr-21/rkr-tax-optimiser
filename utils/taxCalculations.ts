@@ -9,7 +9,8 @@ export interface PersonProfile {
   pensionType: 'salary_sacrifice' | 'relief_at_source';
   studentLoanPlan: 'none' | 'plan_1' | 'plan_2' | 'plan_4' | 'plan_5' | 'postgrad';
   startDate: string; 
-  monthlyExpenses: number; // NEW: Needed for the Waterfall
+  monthlyExpenses: number;
+  isScottishResident: boolean; // NEW: Added for Scottish Tax Bands
 }
 
 export interface AppState {
@@ -44,7 +45,7 @@ export interface WaterfallStrategy {
 export interface CompleteTaxReport {
   primary: IndividualTaxBreakdown;
   optimisationTips: string[];
-  waterfall: WaterfallStrategy; // NEW: The engine now outputs the waterfall strategy
+  waterfall: WaterfallStrategy;
 }
 
 const STANDARD_ALLOWANCE = 12570;
@@ -90,6 +91,10 @@ export function runTaxSimulation(person: PersonProfile): IndividualTaxBreakdown 
     personalAllowance = Math.max(0, STANDARD_ALLOWANCE - Math.floor((adjustedNetIncome - 100000) / 2));
   }
   const taxCode = personalAllowance > 0 ? `${Math.floor(personalAllowance / 10)}L` : '0T';
+  if (person.isScottishResident && taxCode !== '0T') {
+    // Prefix with 'S' for Scottish tax codes (e.g. S1257L)
+    // Note: this is a cosmetic update for the UI, the math relies on the boolean
+  }
 
   let accumulatedGross = 0;
   let accumulatedTaxPaid = 0;
@@ -112,7 +117,7 @@ export function runTaxSimulation(person: PersonProfile): IndividualTaxBreakdown 
     let monthlyNI = calculateNI(taxableMonthlyGross);
     totalNI += monthlyNI;
 
-accumulatedGross += taxableMonthlyGross;
+    accumulatedGross += taxableMonthlyGross;
     
     let allowanceToDate = personalAllowance * ((i + 1) / 12);
     let basicLimitToDate = BASIC_LIMIT * ((i + 1) / 12);
@@ -122,12 +127,41 @@ accumulatedGross += taxableMonthlyGross;
     let higherRateLimitToDate = Math.max(0, additionalThresholdToDate - allowanceToDate);
     
     let taxDueToDate = 0;
-    if (taxableToDate <= basicLimitToDate) {
-      taxDueToDate = taxableToDate * 0.20;
-    } else if (taxableToDate <= higherRateLimitToDate) {
-      taxDueToDate = (basicLimitToDate * 0.20) + ((taxableToDate - basicLimitToDate) * 0.40);
+    
+    if (person.isScottishResident) {
+      // 2026/27 Scottish Tax Band Widths
+      let starterWidth = 3967 * ((i + 1) / 12);
+      let basicWidth = 12989 * ((i + 1) / 12);
+      let intermediateWidth = 14136 * ((i + 1) / 12);
+      let higherWidth = 31338 * ((i + 1) / 12);
+      let advancedWidth = 50140 * ((i + 1) / 12);
+
+      let scotBasicLimit = starterWidth + basicWidth;
+      let scotIntLimit = scotBasicLimit + intermediateWidth;
+      let scotHigherLimit = scotIntLimit + higherWidth;
+      let scotAdvLimit = scotHigherLimit + advancedWidth;
+
+      if (taxableToDate <= starterWidth) {
+        taxDueToDate = taxableToDate * 0.19;
+      } else if (taxableToDate <= scotBasicLimit) {
+        taxDueToDate = (starterWidth * 0.19) + ((taxableToDate - starterWidth) * 0.20);
+      } else if (taxableToDate <= scotIntLimit) {
+        taxDueToDate = (starterWidth * 0.19) + (basicWidth * 0.20) + ((taxableToDate - scotBasicLimit) * 0.21);
+      } else if (taxableToDate <= scotHigherLimit) {
+        taxDueToDate = (starterWidth * 0.19) + (basicWidth * 0.20) + (intermediateWidth * 0.21) + ((taxableToDate - scotIntLimit) * 0.42);
+      } else if (taxableToDate <= scotAdvLimit) {
+        taxDueToDate = (starterWidth * 0.19) + (basicWidth * 0.20) + (intermediateWidth * 0.21) + (higherWidth * 0.42) + ((taxableToDate - scotHigherLimit) * 0.45);
+      } else {
+        taxDueToDate = (starterWidth * 0.19) + (basicWidth * 0.20) + (intermediateWidth * 0.21) + (higherWidth * 0.42) + (advancedWidth * 0.45) + ((taxableToDate - scotAdvLimit) * 0.48);
+      }
     } else {
-      taxDueToDate = (basicLimitToDate * 0.20) + ((higherRateLimitToDate - basicLimitToDate) * 0.40) + ((taxableToDate - higherRateLimitToDate) * 0.45);
+      if (taxableToDate <= basicLimitToDate) {
+        taxDueToDate = taxableToDate * 0.20;
+      } else if (taxableToDate <= higherRateLimitToDate) {
+        taxDueToDate = (basicLimitToDate * 0.20) + ((taxableToDate - basicLimitToDate) * 0.40);
+      } else {
+        taxDueToDate = (basicLimitToDate * 0.20) + ((higherRateLimitToDate - basicLimitToDate) * 0.40) + ((taxableToDate - higherRateLimitToDate) * 0.45);
+      }
     }
 
     let taxThisMonth = Math.max(0, taxDueToDate - accumulatedTaxPaid);
@@ -153,7 +187,7 @@ accumulatedGross += taxableMonthlyGross;
   if (normalMonthTakeHome === 0) normalMonthTakeHome = firstMonthTakeHome;
 
   return {
-    actualGrossIncome, adjustedNetIncome, personalAllowance, taxCode,
+    actualGrossIncome, adjustedNetIncome, personalAllowance, taxCode: person.isScottishResident && personalAllowance > 0 ? `S${taxCode}` : taxCode,
     totalTax: accumulatedTaxPaid, totalNI, totalPension: actualPensionTotal, totalTakeHome,
     monthsWorked, firstMonthTakeHome, normalMonthTakeHome, bonusMonthTakeHome, firstMonthTax, normalMonthTax
   };
@@ -196,26 +230,21 @@ export function calculateCompleteTaxReport(state: AppState): CompleteTaxReport {
     tips.push(`**Optimised Status:** Your income is highly tax-efficient. You have zero pre-tax deductions limiting your monthly take-home pay.`);
   }
 
-  // --- NEW: ISA WATERFALL LOGIC ---
-  // Default to 0 if expenses haven't been typed in yet to avoid NaN errors
   const expenses = state.primary.monthlyExpenses || 0;
   const disposableIncome = baseline.normalMonthTakeHome - expenses;
   let remainingCash = Math.max(0, disposableIncome);
 
-  // 1. LISA Allocation (Max £4,000/year = £333/month)
   const lisaAllocation = Math.min(remainingCash, 333);
   remainingCash -= lisaAllocation;
 
-  // 2. S&S ISA Allocation (Max £20,000/year minus LISA £4k = £16,000/year = £1,333/month)
   const isaAllocation = Math.min(remainingCash, 1333);
   remainingCash -= isaAllocation;
 
-  // 3. GIA / Overpayments (The rest)
   const giaAllocation = remainingCash;
 
   const waterfall: WaterfallStrategy = {
     disposableIncome,
-    emergencyTarget: expenses * 3, // Recommend 3 months living expenses
+    emergencyTarget: expenses * 3, 
     lisaAllocation,
     isaAllocation,
     giaAllocation
