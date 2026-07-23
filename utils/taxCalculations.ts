@@ -223,6 +223,26 @@ export function calculateCompleteTaxReport(state: AppState): CompleteTaxReport {
     tips.push(`**Escape the £100k Trap:** You are losing your tax-free allowance because you earn £${Math.round(excess).toLocaleString()} over the £100k threshold. If you increase your pension slider by exactly **£${Math.round(excess).toLocaleString()}**, you recover your full tax code. This will only reduce your monthly take-home pay by **£${Math.round(takeHomeCostPerMonth).toLocaleString()}**, but it adds thousands to your pension pot tax-free.`);
   }
 
+  // Tip: The Scottish 50% Marginal Rate Trap
+  if (state.primary.isScottishResident) {
+    const scotTrapStart = 43662;
+    const scotTrapEnd = 50268;
+    
+    // Check if their adjusted net income touches the 50% trap zone
+    if (baseline.adjustedNetIncome > scotTrapStart) {
+      const incomeInTrap = Math.min(baseline.adjustedNetIncome, scotTrapEnd) - scotTrapStart;
+      
+      if (incomeInTrap > 0) {
+        // Calculate the impact of escaping the trap
+        const trapProfile = { ...state.primary, personalPensionContribution: state.primary.personalPensionContribution + incomeInTrap };
+        const trapResult = runTaxSimulation(trapProfile);
+        const takeHomeCostPerMonth = baseline.normalMonthTakeHome - trapResult.normalMonthTakeHome;
+        
+        tips.push(`**The Scottish 50% Trap:** Because Scottish tax bands do not align with UK National Insurance, your income between £43,662 and £50,268 is being hit with a brutal **50% marginal deduction** (42% Tax + 8% NI). You currently have **£${Math.round(incomeInTrap).toLocaleString()}** sitting in this trap zone. If you increase your annual pension contribution by exactly £${Math.round(incomeInTrap).toLocaleString()}, you shield this money from the 50% rate. It will only reduce your monthly take-home by **£${Math.round(takeHomeCostPerMonth).toLocaleString()}**, but adds the full gross amount to your wealth!`);
+      }
+    }
+  }
+
   // Tip 3: Bonus Warning
   if (state.primary.bonus > 0) {
     const noBonusProfile = { ...state.primary, bonus: 0 };
