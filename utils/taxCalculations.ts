@@ -112,17 +112,22 @@ export function runTaxSimulation(person: PersonProfile): IndividualTaxBreakdown 
     let monthlyNI = calculateNI(taxableMonthlyGross);
     totalNI += monthlyNI;
 
-    accumulatedGross += taxableMonthlyGross;
+accumulatedGross += taxableMonthlyGross;
+    
     let allowanceToDate = personalAllowance * ((i + 1) / 12);
+    let basicLimitToDate = BASIC_LIMIT * ((i + 1) / 12);
+    let additionalThresholdToDate = ADDITIONAL_THRESHOLD * ((i + 1) / 12);
+    
     let taxableToDate = Math.max(0, accumulatedGross - allowanceToDate);
+    let higherRateLimitToDate = Math.max(0, additionalThresholdToDate - allowanceToDate);
     
     let taxDueToDate = 0;
-    if (taxableToDate <= BASIC_LIMIT) {
+    if (taxableToDate <= basicLimitToDate) {
       taxDueToDate = taxableToDate * 0.20;
-    } else if (taxableToDate <= (ADDITIONAL_THRESHOLD - personalAllowance)) {
-      taxDueToDate = (BASIC_LIMIT * 0.20) + ((taxableToDate - BASIC_LIMIT) * 0.40);
+    } else if (taxableToDate <= higherRateLimitToDate) {
+      taxDueToDate = (basicLimitToDate * 0.20) + ((taxableToDate - basicLimitToDate) * 0.40);
     } else {
-      taxDueToDate = (BASIC_LIMIT * 0.20) + (((ADDITIONAL_THRESHOLD - personalAllowance) - BASIC_LIMIT) * 0.40) + ((taxableToDate - (ADDITIONAL_THRESHOLD - personalAllowance)) * 0.45);
+      taxDueToDate = (basicLimitToDate * 0.20) + ((higherRateLimitToDate - basicLimitToDate) * 0.40) + ((taxableToDate - higherRateLimitToDate) * 0.45);
     }
 
     let taxThisMonth = Math.max(0, taxDueToDate - accumulatedTaxPaid);
