@@ -1,5 +1,3 @@
-// src/utils/taxCalculations.ts
-
 export interface PersonProfile {
   grossSalary: number; 
   bonus: number;
@@ -19,6 +17,19 @@ export interface AppState {
   useHouseholdMode?: boolean;
   useLISA?: boolean;
   householdExpenses?: number;
+}
+
+// NEW: Interface matching your database schema
+export interface TaxConfig {
+  standardAllowance: number;
+  basicLimit: number;
+  additionalThreshold: number;
+  scotStarterRate: number;
+  scotBasicRate: number;
+  scotIntermediateRate: number;
+  scotHigherRate: number;
+  scotAdvancedRate: number;
+  scotTopRate: number;
 }
 
 export interface IndividualTaxBreakdown {
@@ -53,10 +64,6 @@ export interface CompleteTaxReport {
   waterfall: WaterfallStrategy;
 }
 
-const STANDARD_ALLOWANCE = 12570;
-const BASIC_LIMIT = 37700;
-const ADDITIONAL_THRESHOLD = 125140;
-
 function getTaxMonth(dateStr: string): number {
   if (!dateStr) return 0;
   const d = new Date(dateStr);
@@ -78,7 +85,8 @@ function calculateNI(monthlyGross: number): number {
   return ((upperLimit - primaryThreshold) * 0.08) + ((monthlyGross - upperLimit) * 0.02);
 }
 
-export function runTaxSimulation(person: PersonProfile): IndividualTaxBreakdown {
+// UPDATED: Now requires the live config object
+export function runTaxSimulation(person: PersonProfile, config: TaxConfig): IndividualTaxBreakdown {
   const startMonth = getTaxMonth(person.startDate);
   const bonusMonth = person.bonus > 0 ? getTaxMonth(person.bonusDate) : -1;
   const monthsWorked = 12 - startMonth;
@@ -91,9 +99,10 @@ export function runTaxSimulation(person: PersonProfile): IndividualTaxBreakdown 
   
   const adjustedNetIncome = actualGrossIncome - actualPensionTotal; 
 
-  let personalAllowance = STANDARD_ALLOWANCE;
+  // Using dynamic standard allowance
+  let personalAllowance = config.standardAllowance;
   if (adjustedNetIncome > 100000) {
-    personalAllowance = Math.max(0, STANDARD_ALLOWANCE - Math.floor((adjustedNetIncome - 100000) / 2));
+    personalAllowance = Math.max(0, config.standardAllowance - Math.floor((adjustedNetIncome - 100000) / 2));
   }
   const taxCode = personalAllowance > 0 ? `${Math.floor(personalAllowance / 10)}L` : '0T';
 
@@ -121,8 +130,8 @@ export function runTaxSimulation(person: PersonProfile): IndividualTaxBreakdown 
     accumulatedGross += taxableMonthlyGross;
     
     let allowanceToDate = personalAllowance * ((i + 1) / 12);
-    let basicLimitToDate = BASIC_LIMIT * ((i + 1) / 12);
-    let additionalThresholdToDate = ADDITIONAL_THRESHOLD * ((i + 1) / 12);
+    let basicLimitToDate = config.basicLimit * ((i + 1) / 12);
+    let additionalThresholdToDate = config.additionalThreshold * ((i + 1) / 12);
     
     let taxableToDate = Math.max(0, accumulatedGross - allowanceToDate);
     let higherRateLimitToDate = Math.max(0, additionalThresholdToDate - allowanceToDate);
@@ -142,17 +151,17 @@ export function runTaxSimulation(person: PersonProfile): IndividualTaxBreakdown 
       let scotAdvLimit = scotHigherLimit + advancedWidth;
 
       if (taxableToDate <= starterWidth) {
-        taxDueToDate = taxableToDate * 0.19;
+        taxDueToDate = taxableToDate * config.scotStarterRate;
       } else if (taxableToDate <= scotBasicLimit) {
-        taxDueToDate = (starterWidth * 0.19) + ((taxableToDate - starterWidth) * 0.20);
+        taxDueToDate = (starterWidth * config.scotStarterRate) + ((taxableToDate - starterWidth) * config.scotBasicRate);
       } else if (taxableToDate <= scotIntLimit) {
-        taxDueToDate = (starterWidth * 0.19) + (basicWidth * 0.20) + ((taxableToDate - scotBasicLimit) * 0.21);
+        taxDueToDate = (starterWidth * config.scotStarterRate) + (basicWidth * config.scotBasicRate) + ((taxableToDate - scotBasicLimit) * config.scotIntermediateRate);
       } else if (taxableToDate <= scotHigherLimit) {
-        taxDueToDate = (starterWidth * 0.19) + (basicWidth * 0.20) + (intermediateWidth * 0.21) + ((taxableToDate - scotIntLimit) * 0.42);
+        taxDueToDate = (starterWidth * config.scotStarterRate) + (basicWidth * config.scotBasicRate) + (intermediateWidth * config.scotIntermediateRate) + ((taxableToDate - scotIntLimit) * config.scotHigherRate);
       } else if (taxableToDate <= scotAdvLimit) {
-        taxDueToDate = (starterWidth * 0.19) + (basicWidth * 0.20) + (intermediateWidth * 0.21) + (higherWidth * 0.42) + ((taxableToDate - scotHigherLimit) * 0.45);
+        taxDueToDate = (starterWidth * config.scotStarterRate) + (basicWidth * config.scotBasicRate) + (intermediateWidth * config.scotIntermediateRate) + (higherWidth * config.scotHigherRate) + ((taxableToDate - scotHigherLimit) * config.scotAdvancedRate);
       } else {
-        taxDueToDate = (starterWidth * 0.19) + (basicWidth * 0.20) + (intermediateWidth * 0.21) + (higherWidth * 0.42) + (advancedWidth * 0.45) + ((taxableToDate - scotAdvLimit) * 0.48);
+        taxDueToDate = (starterWidth * config.scotStarterRate) + (basicWidth * config.scotBasicRate) + (intermediateWidth * config.scotIntermediateRate) + (higherWidth * config.scotHigherRate) + (advancedWidth * config.scotAdvancedRate) + ((taxableToDate - scotAdvLimit) * config.scotTopRate);
       }
     } else {
       if (taxableToDate <= basicLimitToDate) {
@@ -193,65 +202,54 @@ export function runTaxSimulation(person: PersonProfile): IndividualTaxBreakdown 
   };
 }
 
-export function calculateCompleteTaxReport(state: AppState): CompleteTaxReport {
-  const baseline = runTaxSimulation(state.primary);
+// UPDATED: Now requires the live config object
+export function calculateCompleteTaxReport(state: AppState, config: TaxConfig): CompleteTaxReport {
+  const baseline = runTaxSimulation(state.primary, config);
   let partnerBaseline = undefined;
   
   if (state.useHouseholdMode && state.partner) {
-    partnerBaseline = runTaxSimulation(state.partner);
+    partnerBaseline = runTaxSimulation(state.partner, config);
   }
 
   const tips: string[] = [];
 
-  // Tip 1: Immediate Pay Rise
   if (state.primary.personalPensionContribution > 0) {
     const zeroPensionProfile = { ...state.primary, personalPensionContribution: 0 };
-    const zeroPensionResult = runTaxSimulation(zeroPensionProfile);
+    const zeroPensionResult = runTaxSimulation(zeroPensionProfile, config);
     const takeHomeIncrease = zeroPensionResult.normalMonthTakeHome - baseline.normalMonthTakeHome;
     const taxIncrease = zeroPensionResult.totalTax - baseline.totalTax;
-    
     tips.push(`**Immediate Pay Rise:** You are sacrificing into your pension. If you reduce your pension contribution to £0, your normal monthly take-home pay will instantly **increase by £${Math.round(takeHomeIncrease).toLocaleString()}** (putting exactly £${Math.round(zeroPensionResult.normalMonthTakeHome).toLocaleString()} in your pocket each month). *Warning: You will pay £${Math.round(taxIncrease).toLocaleString()} more in tax annually to do this.*`);
   }
 
-  // Tip 2: The £100k Trap
-  if (baseline.adjustedNetIncome > 100000 && baseline.adjustedNetIncome < 125140) {
+  if (baseline.adjustedNetIncome > 100000 && baseline.adjustedNetIncome < config.additionalThreshold) {
     const excess = baseline.adjustedNetIncome - 100000;
     const trapProfile = { ...state.primary, personalPensionContribution: state.primary.personalPensionContribution + excess };
-    const trapResult = runTaxSimulation(trapProfile);
+    const trapResult = runTaxSimulation(trapProfile, config);
     const takeHomeCostPerMonth = baseline.normalMonthTakeHome - trapResult.normalMonthTakeHome;
-
     tips.push(`**Escape the £100k Trap:** You are losing your tax-free allowance because you earn £${Math.round(excess).toLocaleString()} over the £100k threshold. If you increase your pension slider by exactly **£${Math.round(excess).toLocaleString()}**, you recover your full tax code. This will only reduce your monthly take-home pay by **£${Math.round(takeHomeCostPerMonth).toLocaleString()}**, but it adds thousands to your pension pot tax-free.`);
   }
 
-  // Tip: The Scottish 50% Marginal Rate Trap
   if (state.primary.isScottishResident) {
     const scotTrapStart = 43662;
     const scotTrapEnd = 50268;
-    
-    // Check if their adjusted net income touches the 50% trap zone
     if (baseline.adjustedNetIncome > scotTrapStart) {
       const incomeInTrap = Math.min(baseline.adjustedNetIncome, scotTrapEnd) - scotTrapStart;
-      
       if (incomeInTrap > 0) {
-        // Calculate the impact of escaping the trap
         const trapProfile = { ...state.primary, personalPensionContribution: state.primary.personalPensionContribution + incomeInTrap };
-        const trapResult = runTaxSimulation(trapProfile);
+        const trapResult = runTaxSimulation(trapProfile, config);
         const takeHomeCostPerMonth = baseline.normalMonthTakeHome - trapResult.normalMonthTakeHome;
-        
         tips.push(`**The Scottish 50% Trap:** Because Scottish tax bands do not align with UK National Insurance, your income between £43,662 and £50,268 is being hit with a brutal **50% marginal deduction** (42% Tax + 8% NI). You currently have **£${Math.round(incomeInTrap).toLocaleString()}** sitting in this trap zone. If you increase your annual pension contribution by exactly £${Math.round(incomeInTrap).toLocaleString()}, you shield this money from the 50% rate. It will only reduce your monthly take-home by **£${Math.round(takeHomeCostPerMonth).toLocaleString()}**, but adds the full gross amount to your wealth!`);
       }
     }
   }
 
-  // Tip 3: Bonus Warning
   if (state.primary.bonus > 0) {
     const noBonusProfile = { ...state.primary, bonus: 0 };
-    const noBonusResult = runTaxSimulation(noBonusProfile);
+    const noBonusResult = runTaxSimulation(noBonusProfile, config);
     const taxOnBonus = baseline.totalTax - noBonusResult.totalTax;
     const niOnBonus = baseline.totalNI - noBonusResult.totalNI;
     const totalDeductions = taxOnBonus + niOnBonus;
     const keepPercentage = Math.round(100 - ((totalDeductions / state.primary.bonus) * 100));
-
     tips.push(`**Bonus Tax Warning:** You are getting a £${state.primary.bonus.toLocaleString()} bonus in ${new Date(state.primary.bonusDate).toLocaleString('default', { month: 'long' })}. You will lose **£${Math.round(totalDeductions).toLocaleString()}** of it to Tax and NI (keeping only ${keepPercentage}%). To avoid this, ask your employer to pay this bonus directly into your pension as an 'Employer Contribution' to keep 100% of the money.`);
   }
 
@@ -259,7 +257,6 @@ export function calculateCompleteTaxReport(state: AppState): CompleteTaxReport {
     tips.push(`**Optimised Status:** Your income is highly tax-efficient. You have zero pre-tax deductions limiting your monthly take-home pay.`);
   }
 
-  // --- WATERFALL LOGIC ---
   const useLisaOptIn = state.useLISA !== false; 
   const expenses = state.householdExpenses ?? state.primary.monthlyExpenses ?? 0;
   
@@ -272,23 +269,14 @@ export function calculateCompleteTaxReport(state: AppState): CompleteTaxReport {
   let remainingCash = Math.max(0, disposableIncome);
 
   const peopleCount = (state.useHouseholdMode && state.partner) ? 2 : 1;
-  
   const lisaAllocation = useLisaOptIn ? Math.min(remainingCash, 333.33 * peopleCount) : 0;
   remainingCash -= lisaAllocation;
-
   const totalIsaCapacity = (1666.67 * peopleCount) - lisaAllocation;
   const isaAllocation = Math.min(remainingCash, totalIsaCapacity);
   remainingCash -= isaAllocation;
-
   const giaAllocation = remainingCash;
 
-  const waterfall: WaterfallStrategy = {
-    disposableIncome,
-    emergencyTarget: expenses * 3, 
-    lisaAllocation,
-    isaAllocation,
-    giaAllocation
-  };
+  const waterfall: WaterfallStrategy = { disposableIncome, emergencyTarget: expenses * 3, lisaAllocation, isaAllocation, giaAllocation };
 
   return { primary: baseline, partner: partnerBaseline, optimisationTips: tips, waterfall };
 }

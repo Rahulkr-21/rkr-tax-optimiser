@@ -1,0 +1,27 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model TaxConfig {
+  id                   String   @id @default(uuid())
+  taxYear              String   @unique // e.g. "2026/27"
+  isCurrent            Boolean  @default(false)
+  standardAllowance    Float    @default(12570)
+  basicLimit           Float    @default(37700)
+  additionalThreshold Float    @default(125140)
+  
+  // Scottish Bands
+  scotStarterRate      Float    @default(0.19)
+  scotBasicRate        Float    @default(0.20)
+  scotIntermediateRate Float    @default(0.21)
+  scotHigherRate       Float    @default(0.42)
+  scotAdvancedRate     Float    @default(0.45)
+  scotTopRate          Float    @default(0.48)
+  
+  updatedAt            DateTime @updatedAt
+  createdAt            DateTime @default(now())
+}

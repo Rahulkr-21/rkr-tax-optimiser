@@ -2,11 +2,13 @@
 'use client';
 
 import React, { useState, useMemo, useEffect } from 'react';
-import { AppState, calculateCompleteTaxReport } from '../../utils/taxCalculations';
+// ADD TaxConfig to the import
+import { AppState, TaxConfig, calculateCompleteTaxReport } from '../../utils/taxCalculations';
 import Link from 'next/link';
 
 export default function WaterfallPage() {
   const [isLoaded, setIsLoaded] = useState(false);
+  const [taxConfig, setTaxConfig] = useState<TaxConfig | null>(null);
   
   const [state, setState] = useState<AppState>({
     primary: { grossSalary: 42000, bonus: 0, bonusDate: '2026-12-20', employerPensionContribution: 0, personalPensionContribution: 3300, pensionType: 'salary_sacrifice', studentLoanPlan: 'none', startDate: '2026-04-06', monthlyExpenses: 0, isScottishResident: false },
@@ -17,21 +19,48 @@ export default function WaterfallPage() {
   });
 
   useEffect(() => {
+    // 1. Fetch the live database config
+    const fetchConfig = async () => {
+      try {
+        const response = await fetch('/api/tax-config');
+        if (response.ok) {
+          const data = await response.json();
+          setTaxConfig(data);
+        }
+      } catch (error) {
+        console.error("Failed to fetch tax configuration", error);
+      }
+    };
+    
+    // 2. Load cached local state if it exists
     const savedData = localStorage.getItem('rkr_tax_state_v4');
     if (savedData) {
       try { setState(JSON.parse(savedData)); } catch (e) {}
     }
-    setIsLoaded(true);
+    
+    fetchConfig().then(() => setIsLoaded(true));
   }, []);
 
   useEffect(() => {
     if (isLoaded) localStorage.setItem('rkr_tax_state_v4', JSON.stringify(state));
   }, [state, isLoaded]);
 
-  const report = useMemo(() => calculateCompleteTaxReport(state), [state]);
+  // 3. Inject the config into the math engine
+  const report = useMemo(() => {
+    if (!taxConfig) return null;
+    return calculateCompleteTaxReport(state, taxConfig);
+  }, [state, taxConfig]);
+
   const formatCurrency = (amount: number) => new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'GBP', maximumFractionDigits: 0 }).format(amount);
 
-  if (!isLoaded) return null;
+  // 4. Block render until database connection succeeds
+  if (!isLoaded || !report || !taxConfig) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-slate-50 text-slate-500 font-semibold text-sm">
+        Connecting to dynamic tax database...
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 font-sans pb-20">
