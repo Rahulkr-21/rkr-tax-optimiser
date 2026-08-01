@@ -1,4 +1,6 @@
 // src/app/api/tax-config/route.ts
+export const dynamic = 'force-dynamic';
+
 import { NextResponse } from 'next/server';
 import { PrismaClient } from '@prisma/client';
 import { neonConfig } from '@neondatabase/serverless';
