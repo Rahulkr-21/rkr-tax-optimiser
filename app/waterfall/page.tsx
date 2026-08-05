@@ -1,8 +1,6 @@
-// app/waterfall/page.tsx
 'use client';
 
 import React, { useState, useMemo, useEffect } from 'react';
-// ADD TaxConfig to the import
 import { AppState, TaxConfig, calculateCompleteTaxReport } from '../../utils/taxCalculations';
 import Link from 'next/link';
 
@@ -19,7 +17,6 @@ export default function WaterfallPage() {
   });
 
   useEffect(() => {
-    // 1. Fetch the live database config
     const fetchConfig = async () => {
       try {
         const response = await fetch('/api/tax-config');
@@ -32,28 +29,48 @@ export default function WaterfallPage() {
       }
     };
     
-    // 2. Load cached local state if it exists
+    // LOAD FIX: Safely parse the new format from the Home page
     const savedData = localStorage.getItem('rkr_tax_state_v4');
     if (savedData) {
-      try { setState(JSON.parse(savedData)); } catch (e) {}
+      try { 
+        const parsed = JSON.parse(savedData);
+        if (parsed.state) {
+          setState(parsed.state); // Came from the new Home page
+        } else {
+          setState(parsed); // Fallback
+        }
+      } catch (e) {}
     }
     
     fetchConfig().then(() => setIsLoaded(true));
   }, []);
 
   useEffect(() => {
-    if (isLoaded) localStorage.setItem('rkr_tax_state_v4', JSON.stringify(state));
+    if (isLoaded) {
+      // SAVE FIX: Update the state without overwriting the Home page's pension settings
+      const savedData = localStorage.getItem('rkr_tax_state_v4');
+      let payload = { state };
+      if (savedData) {
+         try {
+             const parsed = JSON.parse(savedData);
+             payload = { ...parsed, state };
+         } catch(e) {}
+      }
+      localStorage.setItem('rkr_tax_state_v4', JSON.stringify(payload));
+    }
   }, [state, isLoaded]);
 
-  // 3. Inject the config into the math engine
   const report = useMemo(() => {
-    if (!taxConfig) return null;
-    return calculateCompleteTaxReport(state, taxConfig);
+    if (!taxConfig || !state.primary) return null;
+    try {
+        return calculateCompleteTaxReport(state, taxConfig);
+    } catch (e) {
+        return null;
+    }
   }, [state, taxConfig]);
 
   const formatCurrency = (amount: number) => new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'GBP', maximumFractionDigits: 0 }).format(amount);
 
-  // 4. Block render until database connection succeeds
   if (!isLoaded || !report || !taxConfig) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-50 text-slate-500 font-semibold text-sm">
@@ -73,7 +90,7 @@ export default function WaterfallPage() {
           <Link href="/" className="text-xs bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold px-4 py-2 rounded-xl border border-slate-200 transition cursor-pointer">
             ← Back to Tax Calculator
           </Link>
-          <span className="text-xs bg-indigo-50 font-semibold px-3 py-2 rounded-full text-indigo-600 border border-indigo-100">UK Investment Wrappers 2026/27</span>
+          <span className="text-xs bg-indigo-50 font-semibold px-3 py-2 rounded-full text-indigo-600 border border-indigo-100 hidden md:inline-block">UK Investment Wrappers 2026/27</span>
         </div>
       </header>
 
@@ -85,11 +102,11 @@ export default function WaterfallPage() {
           
           <div className="flex flex-col sm:flex-row gap-6 mb-6 pb-6 border-b border-slate-100">
             <label className="flex items-center gap-3 cursor-pointer">
-              <input type="checkbox" checked={state.useHouseholdMode} onChange={(e) => setState(p => ({ ...p, useHouseholdMode: e.target.checked }))} className="w-5 h-5 text-indigo-600 rounded" />
+              <input type="checkbox" checked={state.useHouseholdMode || false} onChange={(e) => setState(p => ({ ...p, useHouseholdMode: e.target.checked }))} className="w-5 h-5 text-indigo-600 rounded" />
               <span className="text-sm font-semibold text-slate-700">Enable Dual-Income Household Mode</span>
             </label>
             <label className="flex items-center gap-3 cursor-pointer">
-              <input type="checkbox" checked={state.useLISA} onChange={(e) => setState(p => ({ ...p, useLISA: e.target.checked }))} className="w-5 h-5 text-indigo-600 rounded" />
+              <input type="checkbox" checked={state.useLISA !== false} onChange={(e) => setState(p => ({ ...p, useLISA: e.target.checked }))} className="w-5 h-5 text-indigo-600 rounded" />
               <span className="text-sm font-semibold text-slate-700">Opt-in to Lifetime ISA (LISA) Allocation</span>
             </label>
           </div>
