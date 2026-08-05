@@ -15,7 +15,7 @@ export default function WaterfallPage() {
   const [giaPreference, setGiaPreference] = useState<'ii' | 'investEngine' | 't212' | 'ibkr'>('t212');
   
   const [state, setState] = useState<AppState>({
-    primary: { grossSalary: 42000, bonus: 0, bonusDate: '2026-12-20', employerPensionContribution: 0, personalPensionContribution: 3300, pensionType: 'salary_sacrifice', studentLoanPlan: 'none', startDate: '2026-04-06', monthlyExpenses: 0, isScottishResident: false },
+    primary: { grossSalary: 48000, bonus: 0, bonusDate: '2026-12-20', employerPensionContribution: 0, personalPensionContribution: 0, pensionType: 'salary_sacrifice', studentLoanPlan: 'none', startDate: '2026-04-06', monthlyExpenses: 0, isScottishResident: false },
     partner: { grossSalary: 55000, bonus: 0, bonusDate: '2026-12-20', employerPensionContribution: 0, personalPensionContribution: 2750, pensionType: 'salary_sacrifice', studentLoanPlan: 'none', startDate: '2026-10-06', monthlyExpenses: 0, isScottishResident: true },
     useHouseholdMode: false,
     useLISA: true,
@@ -52,8 +52,17 @@ export default function WaterfallPage() {
     if (savedData) {
       try { 
         const parsed = JSON.parse(savedData);
-        if (parsed.state) setState(parsed.state);
-        else setState(parsed); 
+        const incomingState = parsed.state || parsed;
+
+        // THE FIX: Safely merge state so the Home page doesn't delete the Partner object
+        setState(current => ({
+          ...current,
+          ...incomingState,
+          partner: incomingState.partner || current.partner,
+          useHouseholdMode: incomingState.useHouseholdMode !== undefined ? incomingState.useHouseholdMode : current.useHouseholdMode,
+          useLISA: incomingState.useLISA !== undefined ? incomingState.useLISA : current.useLISA,
+          householdExpenses: incomingState.householdExpenses !== undefined ? incomingState.householdExpenses : current.householdExpenses
+        }));
         
         if (parsed.emergencyFundFilled !== undefined) setEmergencyFundFilled(parsed.emergencyFundFilled);
         if (parsed.giaPreference) setGiaPreference(parsed.giaPreference);
@@ -315,7 +324,6 @@ export default function WaterfallPage() {
                         <h3 className="font-bold text-amber-900 text-sm">General Investment Account (GIA)</h3>
                         <p className="text-xs text-amber-700 mt-0.5 max-w-xl leading-relaxed mb-5">Your surplus cash has saturated your entire annual ISA allowance limits. Direct the overflow here.</p>
 
-                        {/* NEW GIA DROPDOWN */}
                         <div className="bg-white p-4 rounded-xl border border-amber-200/70 shadow-xs">
                           <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2 block">2026 Overflow Platform Selector</label>
                           
